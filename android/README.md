@@ -1,0 +1,43 @@
+# Face ID Kit Android
+Separately buildable Kotlin modules, under the repository's MIT license. No Python runtime, app UI, names, contacts, HTTP, or wedding logic.
+
+- `core`: pure JVM typed contracts, normalized embeddings, revisioned gallery, exact cosine matching, unique top-candidate assignment, IoU tracking, separate tuning/evaluation.
+- `opencv`: Android YuNet/SFace adapter, pinned OpenCV 4.12.0 and model fingerprints. Largest usable faces, optional central filter. Caller supplies upright, unmirrored BGR bytes.
+- `storage`: Room gallery and Android Keystore AES-256-GCM cipher. Explicit cipher required; no plaintext fallback. Synchronous methods require an app-owned background executor.
+
+## Build and consume
+JDK17 / Gradle8.13. Android adapters require a licensed Android SDK, platform36/build-tools35.0.0. Minimum Android29. Core alone: `gradle -p android -PcoreOnly :core:test`.
+
+Pin this repository at an immutable commit in a consumer's Git submodule, then `includeBuild("vendor/face-id-kit/android")` in Gradle settings. Dependencies: `io.github.evoltriet.faceidkit:core:0.2.0`, `opencv:0.2.0`, `storage:0.2.0`. Maven publication is deferred.
+
+Run the existing explicit `face-id-kit download-models --directory <assets-model-directory>` command during setup (Python needed for this helper only), or use an equivalent checksum-verified downloader. Bundle the weights for first-launch offline use and include `licenses/YUNET.txt` and `licenses/SFACE.txt`; model licenses are separate from MIT.
+
+## SDK operations
+```kotlin
+val store = InMemoryStore()
+val backend = OpenCvBackend(modelDirectory)
+val sdk = FaceIdentifier(backend, store)
+store.putIdentity(Identity(opaqueId))
+val detections = sdk.detect(uprightBgrImage)
+sdk.enroll(opaqueId, detections[chosenFace], sourceId = opaqueSourceGroup)
+val results = sdk.identify(anotherImage)
+val session = LiveSession(sdk, maxFaces = 4, centralOnly = false)
+val tracks = session.update(cameraFrame)
+store.deleteSample(sampleId)
+```
+
+Persistent use: `RoomGalleryStore(context, KeystoreCipher(applicationOwnedAlias))`. Apps may encrypt arbitrary metadata/crops with metadata/extra APIs; the SDK does not interpret names or contact payloads. Room revision changes invalidate galleries and temporal consensus. Apps must invalidate their calibrated policy after gallery changes.
+
+Score = 0.7 × best cosine + 0.3 × mean of top three confirmed examples. Threshold .45 and runner-up margin .05 are **uncalibrated defaults**, not probabilities. Unique assignment only accepts top choices; identity conflicts become unknown instead of assigning a weaker runner-up.
+
+TrackConsensus defaults to 4/6, IoU .3, and 1-second expiry. Detection list reordering does not change track ownership. Ambiguous geometric associations reset history. This is conservative tracking, not a learned multi-object tracker; fast motion may require fresh consensus.
+
+All samples carry the same YuNet/SFace fingerprint, dimension, and preprocessing string as the Python adapter. Incompatible comparisons throw. Kotlin uses double accumulation over float32 vectors; synthetic parity tolerates 1e-6 rather than claiming bitwise equality. Changing models or preprocessing requires new enrollment/calibration review.
+
+Calibration rejects direct overlap by ID, source group, and normalized embedding hash across enrollment/tuning/final evaluation. Supply source groups from independent capture sessions to avoid leakage; identical recaptures or adjacent frames are not valid independent evidence. Empty unknown sets never pass. Policy selection uses tuning only, live scoring is reused, and final evaluation cannot tune policy.
+
+## Verification
+Shared `fixtures/parity.json` and `fixtures/workflow_parity.json` cover decisions, numeric scores, identity conflicts, revision/cache changes, reordering/crossings/expiry, and calibration policy/separation. Python CI runs Windows/Linux; Kotlin core can run without Android. Android instrumentation checks actual model execution and encrypted Room/Keystore persistence using synthetic data. No personal images or enrollment databases are committed.
+
+`bash android/ci-emulator.sh <test command>` requires a pre-licensed SDK and never automatically accepts terms. It creates a disposable AVD in RUNNER_TEMP (or /tmp), bounds startup, and cleans up its emulator process. Camera performance and native alignment must also be verified by each application on its target hardware.
+

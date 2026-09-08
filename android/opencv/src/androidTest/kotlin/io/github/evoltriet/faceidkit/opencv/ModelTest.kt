@@ -23,6 +23,9 @@ class ModelTest {
             assertEquals(128, normalized.size)
             assertTrue(normalized.all { it.isFinite() })
             assertEquals(1.0, normalized.sumOf { it.toDouble() * it }, .00001)
+            val reference = org.json.JSONObject(instrumentation.context.assets.open("sface_synthetic_reference.json").bufferedReader().use { it.readText() })
+            val expected = reference.getJSONArray("embedding")
+            normalized.forEachIndexed { index, value -> assertEquals(expected.getDouble(index), value.toDouble(), reference.getDouble("tolerance")) }
         } finally { source.release(); output.release(); directory.listFiles()?.forEach { it.delete() }; directory.delete() }
     }
 }

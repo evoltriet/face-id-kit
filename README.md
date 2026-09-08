@@ -4,7 +4,7 @@ A local-first framework for 1:N face identification. Enroll identities, recogniz
 
 **Contract:** an input face + your enrolled identity gallery → an identity ID or unknown, with similarity, rejection reason, and live stability information.
 
-Version 0.1 is a Python SDK with an OpenCV backend and a localhost browser demo. Native mobile and glasses SDKs are future work. No cloud service, vector database, model training, or API key is required for recognition.
+Version 0.1 provides a Python SDK with an OpenCV backend and a localhost browser demo. Separately buildable [Kotlin/Android modules](android/README.md) now provide on-device matching, OpenCV inference, and encrypted Room storage. Smart-glasses adapters remain future work. No cloud service, vector database, model training, or API key is required for recognition.
 
 ## Quick start
 

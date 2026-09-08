@@ -13,4 +13,9 @@ landmarks = np.array([0, 0, 112, 112, 35, 40, 77, 40, 56, 62, 40, 82, 72, 82, .9
 aligned = backend._recognizer.alignCrop(image, landmarks)
 vector = backend._recognizer.feature(aligned).reshape(-1)
 assert vector.size == 128 and np.isfinite(vector).all()
+import json
+reference = json.loads((Path(__file__).resolve().parents[1] / "fixtures/sface_synthetic_reference.json").read_text())
+synthetic = ((np.arange(112 * 112 * 3) * 73 + 19) % 256).astype(np.uint8).reshape(112, 112, 3)
+feature = backend._recognizer.feature(synthetic).reshape(-1)
+np.testing.assert_allclose(feature / np.linalg.norm(feature), reference["embedding"], atol=reference["tolerance"], rtol=0)
 print("Pinned YuNet detection and SFace alignment/embedding smoke tests passed.")

@@ -10,15 +10,16 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class KeystoreCipher(private val alias: String) : EmbeddingCipher {
-    private fun key(): SecretKey {
+    companion object { private val keyCreationLock = Any() }
+    private fun key(): SecretKey = synchronized(keyCreationLock) {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val existing = store.getKey(alias, null)
-        if (existing != null) return existing as SecretKey
+        if (existing != null) return@synchronized existing as SecretKey
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256).build())
-        return generator.generateKey()
+        generator.generateKey()
     }
     @Synchronized override fun protect(data: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")

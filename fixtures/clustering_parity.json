@@ -1,0 +1,1 @@
+{"model":{"fingerprint":"synthetic-cluster-v1","dimension":3,"preprocessing":"l2"},"vectors":[[1,0,0],[0.99,0.1,0],[0,1,0],[0,0.99,0.1],[0,0,1],[-1,0,0]],"labels":[0,0,1,1,-1,-1]}

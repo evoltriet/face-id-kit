@@ -38,7 +38,7 @@ abstract class GalleryDatabase : RoomDatabase() { abstract fun gallery(): Galler
 class RoomGalleryStore(context: Context, private val cipher: EmbeddingCipher, filename: String = "face-gallery.db") : GalleryStore, Closeable {
     private val db = Room.databaseBuilder(context.applicationContext, GalleryDatabase::class.java, filename)
         .setJournalMode(RoomDatabase.JournalMode.TRUNCATE).addCallback(object : RoomDatabase.Callback() {
-            override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) { db.execSQL("PRAGMA secure_delete=ON") }
+            override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) { db.query("PRAGMA secure_delete=ON").use { it.moveToFirst() } }
         }).build()
     private val dao = db.gallery()
     init { dao.initMeta(MetaRow()) }

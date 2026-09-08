@@ -33,9 +33,9 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
+      - run: bash android/ci-emulator.sh gradle -p android :opencv:connectedDebugAndroidTest :storage:connectedDebugAndroidTest --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          api-level: 35
-          arch: x86_64
-          disable-animations: true
-          script: gradle -p android :opencv:connectedDebugAndroidTest :storage:connectedDebugAndroidTest --no-daemon
+          name: android-synthetic-test-results
+          path: android/*/build/outputs/androidTest-results/connected/**/*.xml

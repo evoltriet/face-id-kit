@@ -1,4 +1,7 @@
 .venv/
+.gradle/
+.idea/
+local.properties
 __pycache__/
 *.py[cod]
 .pytest_cache/

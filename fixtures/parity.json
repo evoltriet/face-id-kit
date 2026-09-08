@@ -1,0 +1,121 @@
+{
+  "model": {
+    "fingerprint": "synthetic-v1",
+    "dimension": 4,
+    "preprocessing": "test-l2"
+  },
+  "samples": [
+    {
+      "id": "s1",
+      "identityId": "a",
+      "embedding": [
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "s2",
+      "identityId": "a",
+      "embedding": [
+        0.99,
+        0.1,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "s3",
+      "identityId": "b",
+      "embedding": [
+        0,
+        1,
+        0,
+        0
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "queries": [
+        [
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ],
+      "identities": [
+        "a",
+        "b"
+      ],
+      "reasons": [
+        "matched",
+        "matched"
+      ]
+    },
+    {
+      "queries": [
+        [
+          0,
+          0,
+          1,
+          0
+        ]
+      ],
+      "identities": [
+        null
+      ],
+      "reasons": [
+        "below_threshold"
+      ]
+    },
+    {
+      "queries": [
+        [
+          0.97,
+          1,
+          0,
+          0
+        ]
+      ],
+      "identities": [
+        null
+      ],
+      "reasons": [
+        "ambiguous"
+      ]
+    },
+    {
+      "queries": [
+        [
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0.99,
+          0.15,
+          0,
+          0
+        ]
+      ],
+      "identities": [
+        "a",
+        null
+      ],
+      "reasons": [
+        "matched",
+        "identity_conflict"
+      ]
+    }
+  ]
+}

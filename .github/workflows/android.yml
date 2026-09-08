@@ -24,6 +24,9 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install .
       - run: face-id-kit download-models --directory android/opencv/src/androidTest/assets/models
+      - uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: false
       - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Enable KVM
         run: |

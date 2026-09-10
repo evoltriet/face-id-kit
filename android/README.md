@@ -26,6 +26,26 @@ val tracks = session.update(cameraFrame)
 store.deleteSample(sampleId)
 ```
 
+For camera images with large close-up faces, applications can opt into a detector
+pyramid without changing embedding models or the original-resolution default:
+
+```kotlin
+val cameraBackend = OpenCvBackend(modelDirectory,
+    scalePolicy = DetectorScalePolicy(listOf(640, 320)))
+cameraBackend.warmUp() // Call on a worker before enabling capture/recognition.
+```
+
+Each requested long edge preserves the image aspect ratio and never upscales.
+Boxes and all five landmarks are mapped back to the original image, duplicate
+detections are merged, and alignment/quality/embedding inference uses original
+pixels. `stats` exposes non-identifying detector/eligible counts for diagnostics.
+Warmup executes both detector and SFace graphs using blank, memory-only inputs.
+These settings can change matching behavior even though the sample format is
+compatible: require calibration review and physical camera verification. They
+are not a guarantee of recognition accuracy or latency. Android tests include
+an explicitly synthetic portrait at ordinary and close-up sizes; provenance and
+the generation prompt are in `opencv/src/androidTest/assets/SYNTHETIC_FACE.md`.
+
 Persistent use: `RoomGalleryStore(context, KeystoreCipher(applicationOwnedAlias))`. Apps may encrypt arbitrary metadata/crops with metadata/extra APIs; the SDK does not interpret names or contact payloads. Room revision changes invalidate galleries and temporal consensus. Apps must invalidate their calibrated policy after gallery changes.
 
 Score = 0.7 × best cosine + 0.3 × mean of top three confirmed examples. Threshold .45 and runner-up margin .05 are **uncalibrated defaults**, not probabilities. Unique assignment only accepts top choices; identity conflicts become unknown instead of assigning a weaker runner-up.
@@ -40,4 +60,3 @@ Calibration rejects direct overlap by ID, source group, and normalized embedding
 Shared `fixtures/parity.json` and `fixtures/workflow_parity.json` cover decisions, numeric scores, identity conflicts, revision/cache changes, reordering/crossings/expiry, and calibration policy/separation. Python CI runs Windows/Linux; Kotlin core can run without Android. Android instrumentation checks actual model execution and encrypted Room/Keystore persistence using synthetic data. No personal images or enrollment databases are committed.
 
 `bash android/ci-emulator.sh <test command>` requires a pre-licensed SDK and never automatically accepts terms. It creates a disposable AVD in RUNNER_TEMP (or /tmp), bounds startup, and cleans up its emulator process. Camera performance and native alignment must also be verified by each application on its target hardware.
-

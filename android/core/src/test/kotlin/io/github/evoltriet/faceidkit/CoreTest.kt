@@ -9,6 +9,20 @@ private data class CaseFixture(val queries: List<FloatArray>, val identities: Li
 private data class Fixture(val model: ModelSpec, val samples: List<SampleFixture>, val cases: List<CaseFixture>)
 
 class CoreTest {
+    @Test fun diagnosticsDoNotChangeConsensus() {
+        val tracker = TrackConsensus()
+        val box = Box(0.0, 0.0, 20.0, 20.0)
+        repeat(4) { i ->
+            val result = tracker.update(listOf(box), listOf("a"), i * .2).single()
+            assertEquals(i == 3, result.second)
+            assertEquals(i+1, tracker.diagnostics.getValue(result.first).agreeing)
+        }
+        val changed = tracker.update(listOf(box), listOf("b"), .8).single()
+        assertFalse(changed.second)
+        assertEquals("identity_changed", tracker.diagnostics.getValue(changed.first).resetReason)
+        val expired = tracker.update(listOf(box), listOf("b"), 2.0).single()
+        assertEquals("track_expired", tracker.diagnostics.getValue(expired.first).resetReason)
+    }
     private val model = ModelSpec("synthetic-v1", 4, "test-l2")
     private fun vector(i: Int) = FloatArray(4) { if (it == i) 1f else 0f }
     @Test fun sharedPythonFixtures() {

@@ -26,7 +26,10 @@ data class Match(val identityId: String?, val score: Double, val margin: Double,
 data class MatchPolicy(val threshold: Double = .45, val margin: Double = .05) {
     init { require(threshold in -1.0..1.0 && margin in 0.0..2.0) }
 }
-data class LiveResult(val trackId: Long, val detection: Detection, val match: Match, val stable: Boolean)
+data class ConsensusDiagnostics(val agreeing: Int = 0, val observations: Int = 0,
+    val required: Int = 4, val window: Int = 6, val resetReason: String? = null)
+data class LiveResult(val trackId: Long, val detection: Detection, val match: Match, val stable: Boolean,
+    val consensus: ConsensusDiagnostics = ConsensusDiagnostics())
 data class GallerySnapshot(val revision: Long, val samples: List<EnrollmentSample>)
 interface FaceBackend { val model: ModelSpec; fun detect(image: BgrImage, maxFaces: Int? = null, centralOnly: Boolean = false): List<Detection> }
 interface EmbeddingCipher { fun protect(data: ByteArray): ByteArray; fun unprotect(data: ByteArray): ByteArray }

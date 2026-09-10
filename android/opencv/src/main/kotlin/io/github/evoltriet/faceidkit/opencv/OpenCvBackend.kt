@@ -14,7 +14,8 @@ import kotlin.math.ln1p
 data class DetectorScalePolicy(val longEdges: List<Int> = emptyList()) {
     init { require(longEdges.size <= 4 && longEdges.all { it in 128..4096 }) }
 }
-data class DetectorStats(val passes: Int = 0, val detected: Int = 0, val eligible: Int = 0)
+data class DetectorStats(val passes: Int = 0, val detected: Int = 0, val eligible: Int = 0,
+    val detectionMs: Double = 0.0, val embeddingMs: Double = 0.0, val totalMs: Double = 0.0)
 
 fun remapFaceRow(row: FloatArray, scaleX: Double, scaleY: Double): FloatArray {
     require(row.size == 15 && scaleX > 0 && scaleY > 0)
@@ -55,6 +56,8 @@ class OpenCvBackend(directory: File, threshold: Float = .85f, private val minFac
     }
     @Synchronized override fun detect(image: BgrImage, maxFaces: Int?, centralOnly: Boolean): List<Detection> {
         require(maxFaces == null || maxFaces > 0)
+        val begun = System.nanoTime()
+        stats = DetectorStats()
         val source = Mat(image.height, image.width, CvType.CV_8UC3)
         try {
             source.put(0, 0, image.pixels)
@@ -82,12 +85,15 @@ class OpenCvBackend(directory: File, threshold: Float = .85f, private val minFac
                     ((f[0] + f[2] / 2) in image.width * .12..image.width * .88 &&
                      (f[1] + f[3] / 2) in image.height * .08..image.height * .92))
             }.sortedByDescending { it[2] * it[3] }.let { if (maxFaces == null) it else it.take(maxFaces) }
-            stats = DetectorStats(sizes.size, candidates.size, eligible.size)
-            return eligible.map { f ->
+            val detectedAt = System.nanoTime()
+            var embeddingNs = 0L
+            val results = eligible.map { f ->
                 val row = Mat(1, 15, CvType.CV_32F).apply { put(0, 0, f) }; val aligned = Mat(); val feature = Mat(); val gray = Mat(); val lap = Mat()
                 val mean = MatOfDouble(); val deviation = MatOfDouble()
                 try {
+                    val embeddingStart = System.nanoTime()
                     recognizer.alignCrop(source, row, aligned); recognizer.feature(aligned, feature)
+                    embeddingNs += System.nanoTime() - embeddingStart
                     val embedding = FloatArray(128); feature.get(0, 0, embedding)
                     Imgproc.cvtColor(aligned, gray, Imgproc.COLOR_BGR2GRAY); Imgproc.Laplacian(gray, lap, CvType.CV_64F)
                     Core.meanStdDev(lap, mean, deviation)
@@ -100,6 +106,9 @@ class OpenCvBackend(directory: File, threshold: Float = .85f, private val minFac
                         minOf(1.0, f[14] * (.5 + .25 * area + .25 * clarity)), BgrImage(aligned.cols(), aligned.rows(), pixels))
                 } finally { row.release(); aligned.release(); feature.release(); gray.release(); lap.release(); mean.release(); deviation.release() }
             }.sortedBy { it.box.x + it.box.width / 2 }
+            stats = DetectorStats(sizes.size, candidates.size, eligible.size, (detectedAt-begun)/1e6,
+                embeddingNs/1e6, (System.nanoTime()-begun)/1e6)
+            return results
         } finally { source.release() }
     }
 }

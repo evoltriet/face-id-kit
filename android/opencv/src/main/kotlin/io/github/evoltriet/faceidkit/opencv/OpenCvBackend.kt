@@ -46,6 +46,13 @@ class OpenCvBackend(directory: File, threshold: Float = .85f, private val minFac
         detector = FaceDetectorYN.create(File(directory, SFace.DETECTOR).path, "", Size(320.0, 320.0), threshold, .3f, 5000)
         recognizer = FaceRecognizerSF.create(File(directory, SFace.RECOGNIZER).path, "")
     }
+    /** Initialize both DNN execution paths without retaining a camera frame or enrollment. */
+    @Synchronized fun warmUp() {
+        detect(BgrImage(640,360,ByteArray(640*360*3)),4,false)
+        val aligned = Mat.zeros(112,112,CvType.CV_8UC3); val feature = Mat()
+        try { recognizer.feature(aligned,feature) }
+        finally { aligned.release(); feature.release() }
+    }
     @Synchronized override fun detect(image: BgrImage, maxFaces: Int?, centralOnly: Boolean): List<Detection> {
         require(maxFaces == null || maxFaces > 0)
         val source = Mat(image.height, image.width, CvType.CV_8UC3)

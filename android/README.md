@@ -38,7 +38,9 @@ cameraBackend.warmUp() // Call on a worker before enabling capture/recognition.
 Each requested long edge preserves the image aspect ratio and never upscales.
 Boxes and all five landmarks are mapped back to the original image, duplicate
 detections are merged, and alignment/quality/embedding inference uses original
-pixels. `stats` exposes non-identifying detector/eligible counts for diagnostics.
+pixels. `stats` exposes non-identifying detector/eligible counts plus
+`detectionMs`, `embeddingMs` (alignment and feature extraction), and `totalMs`.
+Timing uses a monotonic clock and does not change detector/matching settings.
 Warmup executes both detector and SFace graphs using blank, memory-only inputs.
 These settings can change matching behavior even though the sample format is
 compatible: require calibration review and physical camera verification. They
@@ -51,6 +53,14 @@ Persistent use: `RoomGalleryStore(context, KeystoreCipher(applicationOwnedAlias)
 Score = 0.7 × best cosine + 0.3 × mean of top three confirmed examples. Threshold .45 and runner-up margin .05 are **uncalibrated defaults**, not probabilities. Unique assignment only accepts top choices; identity conflicts become unknown instead of assigning a weaker runner-up.
 
 TrackConsensus defaults to 4/6, IoU .3, and 1-second expiry. Detection list reordering does not change track ownership. Ambiguous geometric associations reset history. This is conservative tracking, not a learned multi-object tracker; fast motion may require fresh consensus.
+
+Android `LiveResult.consensus` adds agreeing/observed counts, required/window sizes,
+and a nullable reset reason (`session_start`, `session_reset`, `gallery_changed`,
+`new_spatial_track`, `ambiguous_association`, `identity_changed`, or `track_expired`).
+The existing result constructor remains source-compatible through defaults.
+These fields are diagnostic observations, not confidence probabilities or a
+replacement for `stable` and the accepted `match.identityId`. Applications should
+not log identities, frames or embeddings when displaying diagnostic counters.
 
 All samples carry the same YuNet/SFace fingerprint, dimension, and preprocessing string as the Python adapter. Incompatible comparisons throw. Kotlin uses double accumulation over float32 vectors; synthetic parity tolerates 1e-6 rather than claiming bitwise equality. Changing models or preprocessing requires new enrollment/calibration review.
 

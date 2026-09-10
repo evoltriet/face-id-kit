@@ -12,7 +12,7 @@ class CameraScaleTest {
     @Test fun geometryAndDuplicateSuppression() {
         val f = floatArrayOf(10f,20f,50f,60f,20f,30f,40f,30f,30f,40f,20f,50f,40f,50f,.9f)
         val mapped = remapFaceRow(f, .5, .25)
-        assertEquals(20f, mapped[0]); assertEquals(80f,mapped[1]); assertEquals(160f,mapped[12]); assertEquals(200f,mapped[13])
+        assertEquals(20f, mapped[0]); assertEquals(80f,mapped[1]); assertEquals(80f,mapped[12]); assertEquals(200f,mapped[13])
         assertEquals(.9f,mapped[14]); assertEquals(1,mergeFaceRows(listOf(f,f.copyOf())).size)
         val distant = f.copyOf().apply { this[0] += 200 }
         assertEquals(2,mergeFaceRows(listOf(f,distant)).size)

@@ -10,10 +10,29 @@ import java.io.File
 import java.security.MessageDigest
 import kotlin.math.ln1p
 
-class OpenCvBackend(directory: File, threshold: Float = .85f, private val minFaceSize: Int = 42) : FaceBackend {
+/** Empty edges preserves the legacy original-resolution detector. Alignment always uses original pixels. */
+data class DetectorScalePolicy(val longEdges: List<Int> = emptyList()) {
+    init { require(longEdges.size <= 4 && longEdges.all { it in 128..4096 }) }
+}
+data class DetectorStats(val passes: Int = 0, val detected: Int = 0, val eligible: Int = 0)
+
+fun remapFaceRow(row: FloatArray, scaleX: Double, scaleY: Double): FloatArray {
+    require(row.size == 15 && scaleX > 0 && scaleY > 0)
+    return row.copyOf().apply { for (i in 0..13) this[i] = (this[i] / if (i % 2 == 0) scaleX else scaleY).toFloat() }
+}
+fun mergeFaceRows(rows: List<FloatArray>, iou: Double = .3): List<FloatArray> {
+    val kept = mutableListOf<FloatArray>()
+    fun box(f: FloatArray) = Box(f[0].toDouble(), f[1].toDouble(), f[2].toDouble(), f[3].toDouble())
+    rows.sortedByDescending { it[14] }.forEach { row -> if (kept.none { box(it).iou(box(row)) > iou }) kept.add(row) }
+    return kept
+}
+
+class OpenCvBackend(directory: File, threshold: Float = .85f, private val minFaceSize: Int = 42,
+    private val scalePolicy: DetectorScalePolicy = DetectorScalePolicy()) : FaceBackend {
     override val model = SFace.model
     private val detector: FaceDetectorYN
     private val recognizer: FaceRecognizerSF
+    @Volatile var stats = DetectorStats(); private set
     init {
         check(OpenCVLoader.initLocal()) { "OpenCV could not load on this device" }
         mapOf(SFace.DETECTOR to SFace.DETECTOR_SHA, SFace.RECOGNIZER to SFace.RECOGNIZER_SHA).forEach { (name, hash) ->
@@ -30,20 +49,35 @@ class OpenCvBackend(directory: File, threshold: Float = .85f, private val minFac
     @Synchronized override fun detect(image: BgrImage, maxFaces: Int?, centralOnly: Boolean): List<Detection> {
         require(maxFaces == null || maxFaces > 0)
         val source = Mat(image.height, image.width, CvType.CV_8UC3)
-        val faces = Mat()
         try {
             source.put(0, 0, image.pixels)
-            detector.setInputSize(Size(image.width.toDouble(), image.height.toDouble()))
-            detector.detect(source, faces)
-            val eligible = (0 until faces.rows()).map { row ->
-                val values = FloatArray(15); faces.get(row, 0, values); row to values
-            }.filter { (_, f) ->
+            val sizes = (scalePolicy.longEdges.ifEmpty { listOf(maxOf(image.width, image.height)) }).map { edge ->
+                val scale = minOf(1.0, edge.toDouble() / maxOf(image.width, image.height))
+                maxOf(1, (image.width * scale).toInt()) to maxOf(1, (image.height * scale).toInt())
+            }.distinct()
+            val candidates = mutableListOf<FloatArray>()
+            sizes.forEach { (width, height) ->
+                val resized = Mat(); val found = Mat()
+                try {
+                    val input = if (width == image.width && height == image.height) source else {
+                        Imgproc.resize(source, resized, Size(width.toDouble(), height.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA); resized
+                    }
+                    detector.setInputSize(input.size()); detector.detect(input, found)
+                    for (i in 0 until found.rows()) {
+                        val f = FloatArray(15); found.get(i, 0, f)
+                        if (f.all { it.isFinite() } && f[2] > 0 && f[3] > 0)
+                            candidates.add(remapFaceRow(f, width.toDouble()/image.width, height.toDouble()/image.height))
+                    }
+                } finally { resized.release(); found.release() }
+            }
+            val eligible = (if (sizes.size == 1) candidates else mergeFaceRows(candidates)).filter { f ->
                 minOf(f[2], f[3]) >= minFaceSize && (!centralOnly ||
                     ((f[0] + f[2] / 2) in image.width * .12..image.width * .88 &&
                      (f[1] + f[3] / 2) in image.height * .08..image.height * .92))
-            }.sortedByDescending { it.second[2] * it.second[3] }.let { if (maxFaces == null) it else it.take(maxFaces) }
-            return eligible.map { (index, f) ->
-                val row = faces.row(index); val aligned = Mat(); val feature = Mat(); val gray = Mat(); val lap = Mat()
+            }.sortedByDescending { it[2] * it[3] }.let { if (maxFaces == null) it else it.take(maxFaces) }
+            stats = DetectorStats(sizes.size, candidates.size, eligible.size)
+            return eligible.map { f ->
+                val row = Mat(1, 15, CvType.CV_32F).apply { put(0, 0, f) }; val aligned = Mat(); val feature = Mat(); val gray = Mat(); val lap = Mat()
                 val mean = MatOfDouble(); val deviation = MatOfDouble()
                 try {
                     recognizer.alignCrop(source, row, aligned); recognizer.feature(aligned, feature)
@@ -59,6 +93,6 @@ class OpenCvBackend(directory: File, threshold: Float = .85f, private val minFac
                         minOf(1.0, f[14] * (.5 + .25 * area + .25 * clarity)), BgrImage(aligned.cols(), aligned.rows(), pixels))
                 } finally { row.release(); aligned.release(); feature.release(); gray.release(); lap.release(); mean.release(); deviation.release() }
             }.sortedBy { it.box.x + it.box.width / 2 }
-        } finally { source.release(); faces.release() }
+        } finally { source.release() }
     }
 }

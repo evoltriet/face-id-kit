@@ -13,12 +13,15 @@ data class SampleRow(@PrimaryKey val id: String, val identityId: String, val enc
     val dimension: Int, val preprocessing: String, val quality: Double, val sourceId: String)
 @Entity(tableName = "extras") data class ExtraRow(@PrimaryKey val id: String, val encrypted: ByteArray)
 @Entity(tableName = "meta") data class MetaRow(@PrimaryKey val id: Int = 0, val revision: Long = 0)
+data class SampleDescriptor(val id: String, val identityId: String, val quality: Double)
 
 @Dao interface GalleryDao {
     @Query("SELECT * FROM identities ORDER BY id") fun identities(): List<IdentityRow>
     @Insert(onConflict = OnConflictStrategy.IGNORE) fun insertIdentity(row: IdentityRow)
     @Query("UPDATE identities SET payload=:payload WHERE id=:id") fun updateIdentity(id: String, payload: ByteArray)
     @Query("SELECT * FROM samples ORDER BY id") fun samples(): List<SampleRow>
+    @Query("SELECT * FROM samples WHERE identityId IN (:identities) ORDER BY id") fun samplesFor(identities: List<String>): List<SampleRow>
+    @Query("SELECT id, identityId, quality FROM samples ORDER BY id") fun sampleDescriptors(): List<SampleDescriptor>
     @Upsert fun putSample(row: SampleRow)
     @Query("DELETE FROM samples WHERE id=:id") fun deleteSample(id: String)
     @Query("DELETE FROM identities WHERE id=:id") fun deleteIdentity(id: String)
@@ -53,10 +56,13 @@ class RoomGalleryStore(context: Context, private val cipher: EmbeddingCipher, fi
         }
     override val revision get() = dao.revision() ?: 0
     override fun identities() = dao.identities().map { Identity(it.id) }
-    override fun snapshot(): GallerySnapshot {
+    override fun snapshot(): GallerySnapshot = snapshot(null)
+    /** Filtering happens in SQL, before any embedding is decrypted. Empty selects none. */
+    fun snapshot(identityIds: Set<String>?): GallerySnapshot {
         var result: GallerySnapshot? = null
         db.runInTransaction {
-            result = GallerySnapshot(revision, dao.samples().map { row ->
+            val rows = if (identityIds == null) dao.samples() else identityIds.toList().chunked(500).flatMap { dao.samplesFor(it) }.sortedBy { it.id }
+            result = GallerySnapshot(revision, rows.map { row ->
                 val bytes = open("sample", row.id + ":" + row.identityId, row.encrypted)
                 require(bytes.size == row.dimension * 4)
                 val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
@@ -67,13 +73,17 @@ class RoomGalleryStore(context: Context, private val cipher: EmbeddingCipher, fi
         }
         return requireNotNull(result)
     }
-    override fun putIdentity(identity: Identity) {
+    fun sampleDescriptors(): List<SampleDescriptor> = dao.sampleDescriptors()
+    /** Invalidate derived galleries after an application-owned eligibility change. */
+    fun invalidateRevision() = dao.bump()
+    override fun putIdentity(identity: Identity) = putIdentity(identity,true)
+    fun putIdentity(identity: Identity, affectsGallery: Boolean) {
         require(identity.id.isNotBlank())
-        db.runInTransaction { dao.insertIdentity(IdentityRow(identity.id, seal("identity", identity.id, byteArrayOf()))); dao.bump() }
+        db.runInTransaction { dao.insertIdentity(IdentityRow(identity.id, seal("identity", identity.id, byteArrayOf()))); if(affectsGallery) dao.bump() }
     }
     fun metadata(id: String): ByteArray? = dao.identities().find { it.id == id }?.let { open("identity", id, it.payload) }
-    fun putMetadata(id: String, value: ByteArray) {
-        db.runInTransaction { require(dao.identities().any { it.id == id }); dao.updateIdentity(id, seal("identity", id, value)); dao.bump() }
+    fun putMetadata(id: String, value: ByteArray, affectsGallery: Boolean = true) {
+        db.runInTransaction { require(dao.identities().any { it.id == id }); dao.updateIdentity(id, seal("identity", id, value)); if(affectsGallery) dao.bump() }
     }
     override fun putSample(sample: EnrollmentSample) {
         require(sample.id.isNotBlank() && sample.quality in 0.0..1.0)

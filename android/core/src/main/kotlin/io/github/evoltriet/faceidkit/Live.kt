@@ -45,9 +45,17 @@ class LiveSession(private val faces: FaceIdentifier, private val maxFaces: Int =
     private var revision = faces.store.revision
     @Synchronized fun reset() { tracker.reset() }
     @Synchronized fun update(image: BgrImage, now: Double = System.nanoTime() / 1e9): List<LiveResult> {
+        val before=faces.store.revision
+        val detections=faces.detect(image,maxFaces,centralOnly)
+        if(before != faces.store.revision) { tracker.reset("gallery_changed"); return emptyList() }
+        return updateDetections(detections, now)
+    }
+    /** Applications can supply detections produced by a region-restricted backend. */
+    @Synchronized fun updateDetections(detections: List<Detection>, now: Double = System.nanoTime() / 1e9): List<LiveResult> {
+        require(detections.size <= maxFaces)
         val before = faces.store.revision
         if (before != revision) { tracker.reset("gallery_changed"); revision = before }
-        val results = faces.identify(image, maxFaces, centralOnly)
+        val results = detections.zip(faces.identifier.identifyMany(detections.map { it.embedding to it.model }))
         if (before != faces.store.revision) { tracker.reset(); return emptyList() }
         val tracks = tracker.update(results.map { it.first.box }, results.map { it.second.identityId }, now)
         return results.zip(tracks).map { (r, track) -> LiveResult(track.first, r.first, r.second, track.second,

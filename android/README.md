@@ -57,6 +57,27 @@ All samples carry the same YuNet/SFace fingerprint, dimension, and preprocessing
 Calibration rejects direct overlap by ID, source group, and normalized embedding hash across enrollment/tuning/final evaluation. Supply source groups from independent capture sessions to avoid leakage; identical recaptures or adjacent frames are not valid independent evidence. Empty unknown sets never pass. Policy selection uses tuning only, live scoring is reused, and final evaluation cannot tune policy.
 
 ## Verification
+### Application-owned processing boundaries
+
+`OpenCvBackend.locate(image, regions)` runs detection only on supplied upright,
+unmirrored rectangles. An empty list runs no model; null retains legacy whole-image
+behavior. `embed(image, locations)` is a separate stage, bound to the exact source
+image and dimensions. Alignment uses original resolution with out-of-region pixels
+masked, so interpolation cannot pick up excluded pixels. Face locations include
+sensitive geometry: applications must obtain appropriate permission before even
+calling `locate`, and discard locations when their authorization changes.
+
+`LiveSession.updateDetections` accepts region-scoped detections with the same
+matching, unique assignment, and consensus behavior as the default pipeline.
+Applications own region approvals, tracking-loss rules, and consent—not the SDK.
+
+`RoomGalleryStore.snapshot(identityIds)` selects rows in SQL before decrypting.
+An empty set decrypts no samples; null retains the default complete gallery.
+`sampleDescriptors()` reads IDs and quality without decrypting embeddings.
+Eligibility adapters must expose a changed revision and call `invalidateRevision`
+when eligibility changes, including expiry. Metadata-only writes can explicitly
+set `affectsGallery=false`; existing calls retain their original revision behavior.
+
 Shared `fixtures/parity.json` and `fixtures/workflow_parity.json` cover decisions, numeric scores, identity conflicts, revision/cache changes, reordering/crossings/expiry, and calibration policy/separation. Python CI runs Windows/Linux; Kotlin core can run without Android. Android instrumentation checks actual model execution and encrypted Room/Keystore persistence using synthetic data. No personal images or enrollment databases are committed.
 
 `bash android/ci-emulator.sh <test command>` requires a pre-licensed SDK and never automatically accepts terms. It creates a disposable AVD in RUNNER_TEMP (or /tmp), bounds startup, and cleans up its emulator process. Camera performance and native alignment must also be verified by each application on its target hardware.
